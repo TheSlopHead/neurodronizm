@@ -1,36 +1,17 @@
 package main
 
 import (
+	"context"
 	"log"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"neurodronizm/cmd/collector"
+	"neurodronizm/cmd/store"
 )
 
 func main() {
-	bot, err := tgbotapi.NewBotAPI("8979894456:AAHRe72wplOs-ylpQoer3S1MRLouov4RYj0")
-
+	ctx := context.Background()
+	s, err := store.New("postgres://dronism:change_me@localhost:5432/dronism?sslmode=disable")
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to connect to postgres: %v", err)
 	}
-
-	bot.Debug = true
-
-	log.Printf("Authorized on account %s", bot.Self.UserName)
-
-	u := tgbotapi.NewUpdate(0)
-
-	u.Timeout = 60
-
-	updates := bot.GetUpdatesChan(u)
-
-	for update := range updates {
-		if update.Message != nil {
-			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
-			msg.ReplyToMessageID = update.Message.MessageID
-
-			bot.Send(msg)
-		}
-	}
+	collector.Collector(ctx, s)
 }
