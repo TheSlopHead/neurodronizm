@@ -12,6 +12,10 @@ type Store struct {
 	db *sql.DB
 }
 
+const MAXCONNS = 5
+const CONLIFETIME time.Duration = 5 * time.Minute
+const ConIdleTime time.Duration = 10 * time.Second
+
 func New(connString string) (*Store, error) {
 	db, err := sql.Open("pgx", connString)
 
@@ -22,6 +26,10 @@ func New(connString string) (*Store, error) {
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(MAXCONNS)
+	db.SetMaxIdleConns(MAXCONNS)
+	db.SetConnMaxLifetime(CONLIFETIME)
+	db.SetConnMaxIdleTime(ConIdleTime)
 
 	return &Store{db: db}, nil
 }
@@ -35,4 +43,3 @@ func (s *Store) SavePost(ctx context.Context, tgMessageID int64, text string, po
 	return err
 }
 
-//constring = postgres://dronism:change_me@localhost:5432/dronism?sslmode=disable
