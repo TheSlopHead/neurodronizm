@@ -6,7 +6,7 @@ An AI ghostwriter that clones my writing style and automatically publishes posts
 
 ## Idea
 
-The project collects the history of my posts from [Дронизм | Авторынок "Ереван"](https://t.me/), builds a model of my writing style from them, and automatically generates new posts in that style for a companion channel, [Нейродронизм]. Every draft goes through moderation before publishing: the bot sends it to me in a private message, and it only gets posted after manual approval.
+The project collects the history of my posts from [Дронизм | Авторынок "Ереван"](https://t.me/dronizm), builds a model of my writing style from them, and automatically generates new posts in that style for a companion channel, [Нейродронизм]. Every draft goes through moderation before publishing: the bot sends it to me in a private message, and it only gets posted after manual approval.
 
 Full architecture and reasoning behind the technical decisions: [`architecture.md`](./architecture.md).
 
