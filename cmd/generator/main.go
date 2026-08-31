@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -18,7 +19,7 @@ func main() {
 	neuro_api := os.Getenv("GEMINI_API_KEY")
 	database_url := os.Getenv("DATABASE_URL")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 
 	defer cancel()
 
@@ -42,6 +43,8 @@ func main() {
 
 	defer rows.Close()
 
+	var allPostsText []string
+
 	for rows.Next() {
 		var id int64
 		var text string
@@ -51,18 +54,24 @@ func main() {
 		if err != nil {
 			log.Fatalf("Cannot read string: %v", err)
 		}
-		prompt := "напиши пост на тему машин в стиле этих трех постов, постиронично и со стебом"
+		allPostsText = append(allPostsText, text)
 
-		parts := []*genai.Part{
-			{Text: text + prompt},
-		}
-		result, err := client.Models.GenerateContent(ctx, "gemini-3.6-flash", []*genai.Content{{Parts: parts}}, nil)
-		if err != nil {
-			log.Fatalf("Cannot generate post: %v", err)
-		}
-
-		fmt.Println(result)
 	}
+
+	combinedPosts := strings.Join(allPostsText, "\n---\n")
+	finalPrompt := fmt.Sprintf("Вот примеры моих постов:\n%s\n\nА теперь: %s", combinedPosts, "напиши пост на тему машин в стиле этих трех постов, постиронично и со стебом")
+
+	parts := []*genai.Part{
+		{Text: finalPrompt},
+	}
+	result, err := client.Models.GenerateContent(ctx, "gemini-3.5-flash", []*genai.Content{{Parts: parts}}, nil)
+	if err != nil {
+		log.Fatalf("Cannot generate post: %v", err)
+	}
+
+	// fmt.Println(result)
+	res := result.Text()
+	fmt.Printf("%s", res)
 
 	if err := rows.Err(); err != nil {
 		log.Fatalf("Error with strings:%v", err)
