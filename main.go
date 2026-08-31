@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"log"
-	"neurodronizm/internal/collector"
+	"neurodronizm/cmd/collector"
 	"neurodronizm/internal/store"
 	"os"
 
@@ -24,6 +24,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
-	
+
 	collector.Collector(ctx, s)
 }
