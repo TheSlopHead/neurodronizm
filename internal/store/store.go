@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -43,3 +44,31 @@ func (s *Store) SavePost(ctx context.Context, tgMessageID int64, text string, po
 	return err
 }
 
+func (s *Store) GetLastPost(ctx context.Context, limit int) ([]string, error) {
+	query := "SELECT tg_message_id, text, posted_at FROM posts ORDER BY tg_message_id ASC LIMIT $1;"
+	rows, err := s.db.QueryContext(ctx, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("Error or timeout: %v", err)
+	}
+
+	defer rows.Close()
+
+	var allPostsText []string
+	for rows.Next() {
+		var id int64
+		var text string
+		var postedAt time.Time
+
+		err := rows.Scan(&id, &text, &postedAt)
+		if err != nil {
+			return nil, fmt.Errorf("Cannot read string: %v", err)
+		}
+		allPostsText = append(allPostsText, text)
+
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("Error with strings:%v", err)
+	}
+	return allPostsText, err
+}
