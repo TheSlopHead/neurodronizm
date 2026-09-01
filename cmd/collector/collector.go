@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log"
+	"neurodronizm/internal/generator"
 	"neurodronizm/internal/store"
 	"os"
 	"time"
@@ -10,7 +11,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func Collector(ctx context.Context, s *store.Store) {
+func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 
 	bot_token := os.Getenv("COLLECTOR_BOT_TOKEN")
 	bot, err := tgbotapi.NewBotAPI(bot_token)
@@ -49,15 +50,36 @@ func Collector(ctx context.Context, s *store.Store) {
 				}
 			}
 
-			if update.Message != nil {
-				log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+		}
+		if update.Message != nil {
+			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+			if update.Message.IsCommand() && update.Message.Command() == "generate" {
 
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
-				msg.ReplyToMessageID = update.Message.MessageID
+				cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				examples, err := s.GetLastPost(cmdCtx, 3)
+				if err != nil {
+					log.Printf("Cannot get posts from database: %v", err)
+				}
+				topic := update.Message.CommandArguments()
+				if topic == "" {
+					topic = "напиши пост в моем стиле иронично и со стебом"
+				}
 
-				bot.Send(msg)
+				post, err := gen.GeneratePost(cmdCtx, examples, topic)
+				if err != nil {
+					log.Printf("Cannot generate post: %v", err)
+				}
+
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, post)
+				// msg.ParseMode = "Markdown"
+				_, err = bot.Send(msg)
+				if err != nil {
+					log.Printf("Cannot send message: %v", err)
+				}
+
+				cancel()
+
 			}
-
 		}
 	}
 }
