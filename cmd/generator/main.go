@@ -64,7 +64,7 @@ func main() {
 	parts := []*genai.Part{
 		{Text: finalPrompt},
 	}
-	result, err := client.Models.GenerateContent(ctx, "gemini-3.5-flash", []*genai.Content{{Parts: parts}}, nil)
+	result, err := client.Models.GenerateContent(ctx, "gemini-3.6-flash", []*genai.Content{{Parts: parts}}, nil)
 	if err != nil {
 		log.Fatalf("Cannot generate post: %v", err)
 	}
