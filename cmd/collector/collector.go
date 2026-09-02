@@ -17,6 +17,7 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 	bot, err := tgbotapi.NewBotAPI(bot_token)
 
 	if err != nil {
+		log.Printf("Cannot validate telegram bot: %v", err)
 		panic(err)
 	}
 
