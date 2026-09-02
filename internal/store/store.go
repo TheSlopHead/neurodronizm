@@ -72,3 +72,16 @@ func (s *Store) GetLastPost(ctx context.Context, limit int) ([]string, error) {
 	}
 	return allPostsText, err
 }
+
+func (s *Store) SaveDraft(ctx context.Context, text string) (int, error) {
+	var id int
+	query := "INSERT INTO drafts (text) VALUES ($1) RETURNING id;"
+
+	row := s.db.QueryRowContext(ctx, query, text)
+	err := row.Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("Cannot scan row id: %v", err)
+	}
+
+	return id, nil
+}
