@@ -34,7 +34,7 @@ func (g *Generator) GeneratePost(ctx context.Context, examples []string, topic s
 	parts := []*genai.Part{
 		{Text: finalPrompt},
 	}
-	rawResult, err := g.genaiClient.Models.GenerateContent(ctx, "gemini-3.6-flash", []*genai.Content{{Parts: parts}}, nil)
+	rawResult, err := g.genaiClient.Models.GenerateContent(ctx, "gemini-3.1-flash-lite", []*genai.Content{{Parts: parts}}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Cannot generate post: %v", err)
 	}
