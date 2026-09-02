@@ -27,17 +27,26 @@ func New(ctx context.Context, apiKey string) (*Generator, error) {
 	}, nil
 }
 
-func (g *Generator) GeneratePost(ctx context.Context, examples []string, topic string) (string, error) {
+func (g *Generator) GeneratePost(ctx context.Context, examples []string, topic string) ([]string, error) {
 	Prompt := strings.Join(examples, "\n---\n")
 	finalPrompt := fmt.Sprintf("Вот примеры моих постов:\n%s\n\nА теперь: %s", Prompt, topic)
 
 	parts := []*genai.Part{
 		{Text: finalPrompt},
 	}
-	result, err := g.genaiClient.Models.GenerateContent(ctx, "gemini-3.6-flash", []*genai.Content{{Parts: parts}}, nil)
+	rawResult, err := g.genaiClient.Models.GenerateContent(ctx, "gemini-3.6-flash", []*genai.Content{{Parts: parts}}, nil)
 	if err != nil {
-		return "", fmt.Errorf("Cannot generate post: %v", err)
+		return nil, fmt.Errorf("Cannot generate post: %v", err)
 	}
-	res := result.Text()
-	return res, err
+	res := rawResult.Text()
+	variants := strings.Split(res, "[POST_SPLIT]")
+	cleanVariants := make([]string, 0, len(variants))
+
+	for _, variant := range variants {
+		trimmed := strings.TrimSpace(variant)
+		if trimmed != "" {
+			cleanVariants = append(cleanVariants, trimmed)
+		}
+	}
+	return cleanVariants, nil
 }
