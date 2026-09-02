@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"neurodronizm/internal/generator"
 	"neurodronizm/internal/store"
@@ -56,28 +57,54 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 			if update.Message.IsCommand() && update.Message.Command() == "generate" {
 
-				cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				cmdCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
 				examples, err := s.GetLastPost(cmdCtx, 3)
 				if err != nil {
 					log.Printf("Cannot get posts from database: %v", err)
 				}
 				topic := update.Message.CommandArguments()
+
 				if topic == "" {
-					topic = "напиши пост в моем стиле иронично и со стебом"
+					topic = "Сгенерируй 3 разных варианта поста в моем стиле, иронично и со стебом. Разделяй варианты строкой [POST_SPLIT]. Внутри самих постов этот маркер не используй"
+				} else {
+					topic += "Разделяй варианты строкой [POST_SPLIT]. Внутри самих постов этот маркер не используй"
 				}
 
-				post, err := gen.GeneratePost(cmdCtx, examples, topic)
+				variants, err := gen.GeneratePost(cmdCtx, examples, topic)
 				if err != nil {
 					log.Printf("Cannot generate post: %v", err)
 				}
 
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, post)
-				// msg.ParseMode = "Markdown"
+				var responseText string
+				var draftIDs []int
+				for i, variant := range variants {
+					id, err := s.SaveDraft(cmdCtx, variant)
+					if err != nil {
+						log.Printf("Cannot use savedraft: %v", err)
+						break
+					}
+					draftIDs = append(draftIDs, id)
+					responseText += fmt.Sprintf("<b>Variant %d: </b>\n%s\n\n", i+1, variant)
+				}
+
+				var row []tgbotapi.InlineKeyboardButton
+				for index, id := range draftIDs {
+
+					callbackData := fmt.Sprintf("publish: %d", id)
+					buttonText := fmt.Sprintf("Variant: %d", index+1)
+
+					btn := tgbotapi.NewInlineKeyboardButtonData(buttonText, callbackData)
+					row = append(row, btn)
+				}
+				keyboard := tgbotapi.NewInlineKeyboardMarkup(row)
+
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, responseText)
+				msg.ParseMode = "HTML"
+				msg.ReplyMarkup = keyboard
 				_, err = bot.Send(msg)
 				if err != nil {
 					log.Printf("Cannot send message: %v", err)
 				}
-
 				cancel()
 
 			}
