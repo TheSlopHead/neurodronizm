@@ -85,3 +85,24 @@ func (s *Store) SaveDraft(ctx context.Context, text string) (int, error) {
 
 	return id, nil
 }
+
+func (s *Store) GetDraftByID(ctx context.Context, id int) (string, error) {
+	var text string
+	query := "SELECT text FROM drafts WHERE id = $1"
+	row := s.db.QueryRowContext(ctx, query, id)
+	err := row.Scan(&text)
+	if err != nil {
+		return "", fmt.Errorf("Cannot scan text from db: %v", err)
+	}
+	return text, nil
+}
+
+func (s *Store) ChangeStatus(ctx context.Context, id int) error {
+	query := "UPDATE drafts SET status = 'published' WHERE id = $1"
+	_, err := s.db.ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("Cannot update status: %v", err)
+	}
+	return nil
+
+}
