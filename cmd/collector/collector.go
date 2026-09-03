@@ -7,6 +7,8 @@ import (
 	"neurodronizm/internal/generator"
 	"neurodronizm/internal/store"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -15,6 +17,7 @@ import (
 func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 
 	bot_token := os.Getenv("COLLECTOR_BOT_TOKEN")
+	channel_name := os.Getenv("CHANNEL_NAME")
 	bot, err := tgbotapi.NewBotAPI(bot_token)
 
 	if err != nil {
@@ -107,6 +110,33 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 				}
 				cancel()
 
+			}
+		}
+		if update.CallbackQuery != nil {
+			if strings.HasPrefix(update.CallbackQuery.Data, "publish") {
+				callbackctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				idS := strings.TrimPrefix(update.CallbackQuery.Data, "publish: ")
+				id, err := strconv.Atoi(idS)
+				if err != nil {
+					log.Printf("Cannot convert string to int: %v", err)
+				}
+				post, err := s.GetDraftByID(callbackctx, id)
+				if err != nil {
+					log.Printf("Cannot get draft by id: %v", err)
+				}
+				err = s.ChangeStatus(callbackctx, id)
+				if err != nil {
+					log.Printf("Cannot change draft status: %v", err)
+				}
+				channel_post := tgbotapi.NewMessageToChannel(channel_name, post)
+				if _, err := bot.Send(channel_post); err != nil {
+					log.Printf("Bot cannot publish post: %v", err)
+				}
+				callBackAnswer := tgbotapi.NewCallback(update.CallbackQuery.ID, "Пост успешно опубликован в канал!")
+				if _, err := bot.Request(callBackAnswer); err != nil {
+					log.Printf("Cannot answer to callback: %v", err)
+				}
+				cancel()
 			}
 		}
 	}
