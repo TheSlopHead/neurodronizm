@@ -18,6 +18,11 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 
 	bot_token := os.Getenv("COLLECTOR_BOT_TOKEN")
 	channel_name := os.Getenv("CHANNEL_NAME")
+	raw_my_id := os.Getenv("MY_ID")
+	my_id, err := strconv.ParseInt(raw_my_id, 10, 64)
+	if err != nil {
+		log.Printf("Cannot parse to int: %v", err)
+	}
 	bot, err := tgbotapi.NewBotAPI(bot_token)
 
 	if err != nil {
@@ -57,6 +62,9 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 
 		}
 		if update.Message != nil {
+			if update.Message.From.ID != my_id {
+				continue
+			}
 			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 			if update.Message.IsCommand() && update.Message.Command() == "generate" {
 
@@ -93,7 +101,7 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 				var row []tgbotapi.InlineKeyboardButton
 				for index, id := range draftIDs {
 
-					callbackData := fmt.Sprintf("publish: %d", id)
+					callbackData := fmt.Sprintf("publish:%d", id)
 					buttonText := fmt.Sprintf("Variant: %d", index+1)
 
 					btn := tgbotapi.NewInlineKeyboardButtonData(buttonText, callbackData)
@@ -113,12 +121,17 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 			}
 		}
 		if update.CallbackQuery != nil {
+			if update.CallbackQuery.From.ID != my_id {
+				continue
+			}
 			if strings.HasPrefix(update.CallbackQuery.Data, "publish") {
 				callbackctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				idS := strings.TrimPrefix(update.CallbackQuery.Data, "publish: ")
+				idS := strings.TrimPrefix(update.CallbackQuery.Data, "publish:")
 				id, err := strconv.Atoi(idS)
 				if err != nil {
 					log.Printf("Cannot convert string to int: %v", err)
+					cancel()
+					continue
 				}
 				post, err := s.GetDraftByID(callbackctx, id)
 				if err != nil {
