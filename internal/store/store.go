@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -104,5 +105,55 @@ func (s *Store) ChangeStatus(ctx context.Context, id int) error {
 		return fmt.Errorf("Cannot update status: %v", err)
 	}
 	return nil
+
+}
+
+func (s *Store) SaveEmbedding(ctx context.Context, postID int64, vector []float32) error {
+	array := make([]string, len(vector))
+	var strVector string
+
+	for i, v := range vector {
+		array[i] = fmt.Sprintf("%f", v)
+
+	}
+	joined := strings.Join(array, ",")
+	strVector = fmt.Sprintf("[%s]", joined)
+
+	query := "INSERT INTO post_embeddings (post_id, embedding) VALUES ($1, $2);"
+	_, err := s.db.ExecContext(ctx, query, postID, strVector)
+	if err != nil {
+		return fmt.Errorf("Save embedding error: %v", err)
+	}
+	return nil
+}
+
+func (s *Store) FindSimilarPosts(ctx context.Context, queryVector []float32, limit int) ([]int64, error) {
+	array := make([]string, len(queryVector))
+	var strVector string
+	var id int64
+	var result []int64
+
+	for i, v := range queryVector {
+		array[i] = fmt.Sprintf("%f", v)
+
+	}
+	joined := strings.Join(array, ",")
+	strVector = fmt.Sprintf("[%s]", joined)
+
+	query := "SELECT post_id FROM post_embeddings ORDER BY embedding <=> $1 ASC LIMIT $2;"
+	row, err := s.db.QueryContext(ctx, query, strVector, limit)
+	if err != nil {
+		return nil, fmt.Errorf("Find similar post failture: %v", err)
+	}
+	defer row.Close()
+
+	for row.Next() {
+		err := row.Scan(&id)
+		if err != nil {
+			return nil, fmt.Errorf("row scan error: %v", err)
+		}
+		result = append(result, id)
+	}
+	return result, nil
 
 }
