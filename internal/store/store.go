@@ -14,6 +14,12 @@ type Store struct {
 	db *sql.DB
 }
 
+type Post struct {
+	ID       int64
+	Text     string
+	PostedAt time.Time
+}
+
 const MAXCONNS = 5
 const CONLIFETIME time.Duration = 5 * time.Minute
 const ConIdleTime time.Duration = 10 * time.Second
@@ -155,5 +161,32 @@ func (s *Store) FindSimilarPosts(ctx context.Context, queryVector []float32, lim
 		result = append(result, id)
 	}
 	return result, nil
+
+}
+
+func (s *Store) GetPostsWithoutEmbeddings(ctx context.Context) ([]*Post, error) {
+	query := "SELECT posts.tg_message_id, posts.text, posts.posted_at FROM posts LEFT JOIN post_embeddings ON posts.tg_message_id = post_embeddings.post_id WHERE post_embeddings.post_id IS NULL;"
+
+	row, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot get request: %v", err)
+	}
+	defer row.Close()
+
+	var posts []*Post
+
+	for row.Next() {
+		var p Post
+		err := row.Scan(&p.ID, &p.Text, &p.PostedAt)
+		if err != nil {
+			return nil, fmt.Errorf("row scan error: %v", err)
+		}
+		posts = append(posts, &p)
+
+	}
+	if err := row.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %v", err)
+	}
+	return posts, nil
 
 }
