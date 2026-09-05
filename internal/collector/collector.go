@@ -69,16 +69,25 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 			if update.Message.IsCommand() && update.Message.Command() == "generate" {
 
 				cmdCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
-				examples, err := s.GetLastPost(cmdCtx, 3)
+				limit := 15
+				examples, err := s.GetLastPost(cmdCtx, limit)
 				if err != nil {
 					log.Printf("Cannot get posts from database: %v", err)
 				}
 				topic := update.Message.CommandArguments()
 
-				if topic == "" {
-					topic = "Сгенерируй 3 разных варианта поста в моем стиле, иронично и со стебом. Разделяй варианты строкой [POST_SPLIT]. Внутри самих постов этот маркер не используй"
-				} else {
-					topic += "Разделяй варианты строкой [POST_SPLIT]. Внутри самих постов этот маркер не используй"
+				// if topic == "" {
+				// 	topic = "Сгенерируй 3 разных варианта поста в моем стиле, иронично и со стебом. Разделяй варианты строкой [POST_SPLIT]. Внутри самих постов этот маркер не используй"
+				// } else {
+				// 	topic += "Разделяй варианты строкой [POST_SPLIT]. Внутри самих постов этот маркер не используй"
+				// }
+				vector, err := gen.GetEmbedding(cmdCtx, topic)
+				if err != nil {
+					log.Printf("Cannot get embedding: %v", err)
+				}
+				postId, err := s.FindSimilarPosts(cmdCtx, vector, limit)
+				if err != nil {
+					log.Printf("Cannot find similar psot: %v", err)
 				}
 
 				variants, err := gen.GeneratePost(cmdCtx, examples, topic)
