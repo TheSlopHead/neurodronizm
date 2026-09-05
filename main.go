@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"log"
-	"neurodronizm/cmd/collector"
+	"neurodronizm/internal/collector"
 	"neurodronizm/internal/generator"
 	"neurodronizm/internal/store"
 	"os"
