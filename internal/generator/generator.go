@@ -117,3 +117,23 @@ func (g *Generator) GetEmbedding(ctx context.Context, text string) ([]float32, e
 	}
 	return vec32, nil
 }
+
+func (g *Generator) TopicGenerator(ctx context.Context, topic string) (string, error) {
+	if topic == "" {
+		prompt := "Ты — креативный автор канала. Придумай одну интересную, актуальную и острую тему для постироничного поста про автомобили (или технологии). Верни ТОЛЬКО саму тему одной короткой фразой, без лишних слов, кавычек и приветствий"
+		rawResult, err := g.openaiClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+			Model: openai.ChatModel("llama3.2:3b"),
+			Messages: ([]openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage(prompt),
+			}),
+		})
+		if err != nil {
+			return "", fmt.Errorf("Cannot generate post: %v", err)
+		}
+		res := rawResult.Choices[0].Message.Content
+		return res, nil
+	} else {
+		return topic, nil
+	}
+
+}
