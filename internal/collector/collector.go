@@ -40,6 +40,20 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 
 	updates := bot.GetUpdatesChan(u)
 
+	autoGenerationLimit := 15
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				log.Println("Run automatic draft generation on a schedule...")
+				runAutoGeneration(ctx, s, gen, "", autoGenerationLimit)
+			}
+		}
+	}()
 	for update := range updates {
 		if update.ChannelPost != nil {
 			post := update.ChannelPost
@@ -76,25 +90,12 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 				// }
 				topic := update.Message.CommandArguments()
 
-				finalTopic, err := gen.TopicGenerator(cmdCtx, topic)
-				if err != nil {
-					log.Printf("Cannot get right topic: %v", err)
+				variants, err := runAutoGeneration(cmdCtx, s, gen, topic, limit)
+				if err != nil || len(variants) == 0 {
+					log.Printf("Autogeneration error: %v", err)
+					cancel()
+					continue
 				}
-
-				vector, err := gen.GetEmbedding(cmdCtx, finalTopic)
-				if err != nil {
-					log.Printf("Cannot get embedding: %v", err)
-				}
-				examples, err := s.FindSimilarPosts(cmdCtx, vector, limit)
-				if err != nil {
-					log.Printf("Cannot find similar psot: %v", err)
-				}
-
-				variants, err := gen.GeneratePost(cmdCtx, examples, topic)
-				if err != nil {
-					log.Printf("Cannot generate post: %v", err)
-				}
-
 				var responseText string
 				var draftIDs []int
 				for i, variant := range variants {
@@ -162,4 +163,32 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 			}
 		}
 	}
+}
+
+func runAutoGeneration(ctx context.Context, s *store.Store, gen *generator.Generator, topic string, limit int) ([]string, error) {
+
+	finalTopic, err := gen.TopicGenerator(ctx, topic)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot get right topic: %v", err)
+	}
+	log.Printf("Придумал тему: %s", finalTopic)
+
+	vector, err := gen.GetEmbedding(ctx, finalTopic)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot get embedding: %v", err)
+	}
+	examples, err := s.FindSimilarPosts(ctx, vector, limit)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot find similar psot: %v", err)
+	}
+	log.Printf("Найдено похожих постов %d", len(examples))
+
+	variants, err := gen.GeneratePost(ctx, examples, finalTopic)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot generate post: %v", err)
+	}
+	log.Printf("получено вариантов %d", len(variants))
+
+	return variants, nil
+
 }
