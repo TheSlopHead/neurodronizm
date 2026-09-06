@@ -70,22 +70,22 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 
 				cmdCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
 				limit := 15
-				examples, err := s.GetLastPost(cmdCtx, limit)
-				if err != nil {
-					log.Printf("Cannot get posts from database: %v", err)
-				}
+				// examples, err := s.GetLastPost(cmdCtx, limit) - cause i have vectorizing search
+				// if err != nil {
+				// 	log.Printf("Cannot get posts from database: %v", err)
+				// }
 				topic := update.Message.CommandArguments()
 
-				// if topic == "" {
-				// 	topic = "Сгенерируй 3 разных варианта поста в моем стиле, иронично и со стебом. Разделяй варианты строкой [POST_SPLIT]. Внутри самих постов этот маркер не используй"
-				// } else {
-				// 	topic += "Разделяй варианты строкой [POST_SPLIT]. Внутри самих постов этот маркер не используй"
-				// }
-				vector, err := gen.GetEmbedding(cmdCtx, topic)
+				finalTopic, err := gen.TopicGenerator(cmdCtx, topic)
+				if err != nil {
+					log.Printf("Cannot get right topic: %v", err)
+				}
+
+				vector, err := gen.GetEmbedding(cmdCtx, finalTopic)
 				if err != nil {
 					log.Printf("Cannot get embedding: %v", err)
 				}
-				postId, err := s.FindSimilarPosts(cmdCtx, vector, limit)
+				examples, err := s.FindSimilarPosts(cmdCtx, vector, limit)
 				if err != nil {
 					log.Printf("Cannot find similar psot: %v", err)
 				}
