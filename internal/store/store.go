@@ -133,11 +133,11 @@ func (s *Store) SaveEmbedding(ctx context.Context, postID int64, vector []float3
 	return nil
 }
 
-func (s *Store) FindSimilarPosts(ctx context.Context, queryVector []float32, limit int) ([]int64, error) {
+func (s *Store) FindSimilarPosts(ctx context.Context, queryVector []float32, limit int) ([]string, error) {
 	array := make([]string, len(queryVector))
 	var strVector string
-	var id int64
-	var result []int64
+	var text string
+	var result []string
 
 	for i, v := range queryVector {
 		array[i] = fmt.Sprintf("%f", v)
@@ -146,7 +146,7 @@ func (s *Store) FindSimilarPosts(ctx context.Context, queryVector []float32, lim
 	joined := strings.Join(array, ",")
 	strVector = fmt.Sprintf("[%s]", joined)
 
-	query := "SELECT post_id FROM post_embeddings ORDER BY embedding <=> $1 ASC LIMIT $2;"
+	query := "SELECT posts,text FROM post_embeddings INNER JOIN posts ON posts.tg_message_id = post_embeddings.post_id ORDER BY embedding <=> $1 ASC LIMIT $2;"
 	row, err := s.db.QueryContext(ctx, query, strVector, limit)
 	if err != nil {
 		return nil, fmt.Errorf("Find similar post failture: %v", err)
@@ -154,13 +154,27 @@ func (s *Store) FindSimilarPosts(ctx context.Context, queryVector []float32, lim
 	defer row.Close()
 
 	for row.Next() {
-		err := row.Scan(&id)
+		err := row.Scan(&text)
 		if err != nil {
 			return nil, fmt.Errorf("row scan error: %v", err)
 		}
-		result = append(result, id)
+		result = append(result, text)
+	}
+	if err := row.Err(); err != nil {
+		return nil, fmt.Errorf("Error with rows: %v", err)
 	}
 	return result, nil
+
+}
+
+func (s *Store) GetPostTextById(ctx context.Context, id int64) (string, error) {
+	query := "SELECT posts FROM posts WHERE tg_message_id = $1;"
+	var text string
+	err := s.db.QueryRowContext(ctx, query, id).Scan(&text)
+	if err != nil {
+		return "", fmt.Errorf("Cannot get text from db: %v", err)
+	}
+	return text, nil
 
 }
 
