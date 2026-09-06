@@ -74,7 +74,7 @@ func (g *Generator) GeneratePost(ctx context.Context, examples []string, topic s
 	finalPrompt := fmt.Sprintf("Вот примеры моих постов:\n%s\n\nА теперь: %s", Prompt, topic)
 
 	rawResult, err := g.openaiClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model: openai.ChatModel("llama3.2:3b"),
+		Model: openai.ChatModel("qwen2.5:1.5b"),
 		Messages: ([]openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage(finalPrompt),
 		}),
@@ -122,7 +122,7 @@ func (g *Generator) TopicGenerator(ctx context.Context, topic string) (string, e
 	if topic == "" {
 		prompt := "Ты — креативный автор канала. Придумай одну интересную, актуальную и острую тему для постироничного поста про автомобили (или технологии). Верни ТОЛЬКО саму тему одной короткой фразой, без лишних слов, кавычек и приветствий"
 		rawResult, err := g.openaiClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-			Model: openai.ChatModel("llama3.2:3b"),
+			Model: openai.ChatModel("qwen2.5:1.5b"),
 			Messages: ([]openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage(prompt),
 			}),
