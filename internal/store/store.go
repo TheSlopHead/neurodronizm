@@ -146,7 +146,7 @@ func (s *Store) FindSimilarPosts(ctx context.Context, queryVector []float32, lim
 	joined := strings.Join(array, ",")
 	strVector = fmt.Sprintf("[%s]", joined)
 
-	query := "SELECT posts,text FROM post_embeddings INNER JOIN posts ON posts.tg_message_id = post_embeddings.post_id ORDER BY embedding <=> $1 ASC LIMIT $2;"
+	query := "SELECT posts.text FROM post_embeddings INNER JOIN posts ON posts.tg_message_id = post_embeddings.post_id ORDER BY embedding <=> $1 ASC LIMIT $2;"
 	row, err := s.db.QueryContext(ctx, query, strVector, limit)
 	if err != nil {
 		return nil, fmt.Errorf("Find similar post failture: %v", err)
