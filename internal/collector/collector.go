@@ -24,7 +24,6 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 		log.Printf("Cannot parse to int: %v", err)
 	}
 	bot, err := tgbotapi.NewBotAPI(bot_token)
-
 	if err != nil {
 		log.Printf("Cannot validate telegram bot: %v", err)
 		panic(err)
@@ -40,6 +39,28 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 
 	updates := bot.GetUpdatesChan(u)
 
+	autoGenerationLimit := 15
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				log.Println("Run automatic draft generation on a schedule...")
+				cmdCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
+				variants, err := runAutoGeneration(ctx, s, gen, "", autoGenerationLimit)
+				if err != nil || len(variants) == 0 {
+					log.Printf("Autogeneration error: %v", err)
+					cancel()
+					continue
+				}
+				sendDraftsMenu(cmdCtx, s, bot, variants, my_id)
+				cancel()
+			}
+		}
+	}()
 	for update := range updates {
 		if update.ChannelPost != nil {
 			post := update.ChannelPost
@@ -69,53 +90,16 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 			if update.Message.IsCommand() && update.Message.Command() == "generate" {
 
 				cmdCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
-				examples, err := s.GetLastPost(cmdCtx, 3)
-				if err != nil {
-					log.Printf("Cannot get posts from database: %v", err)
-				}
+				limit := 15
 				topic := update.Message.CommandArguments()
 
-				if topic == "" {
-					topic = "Сгенерируй 3 разных варианта поста в моем стиле, иронично и со стебом. Разделяй варианты строкой [POST_SPLIT]. Внутри самих постов этот маркер не используй"
-				} else {
-					topic += "Разделяй варианты строкой [POST_SPLIT]. Внутри самих постов этот маркер не используй"
+				variants, err := runAutoGeneration(cmdCtx, s, gen, topic, limit)
+				if err != nil || len(variants) == 0 {
+					log.Printf("Autogeneration error: %v", err)
+					cancel()
+					continue
 				}
-
-				variants, err := gen.GeneratePost(cmdCtx, examples, topic)
-				if err != nil {
-					log.Printf("Cannot generate post: %v", err)
-				}
-
-				var responseText string
-				var draftIDs []int
-				for i, variant := range variants {
-					id, err := s.SaveDraft(cmdCtx, variant)
-					if err != nil {
-						log.Printf("Cannot use savedraft: %v", err)
-						break
-					}
-					draftIDs = append(draftIDs, id)
-					responseText += fmt.Sprintf("<b>Variant %d: </b>\n%s\n\n", i+1, variant)
-				}
-
-				var row []tgbotapi.InlineKeyboardButton
-				for index, id := range draftIDs {
-
-					callbackData := fmt.Sprintf("publish:%d", id)
-					buttonText := fmt.Sprintf("Variant: %d", index+1)
-
-					btn := tgbotapi.NewInlineKeyboardButtonData(buttonText, callbackData)
-					row = append(row, btn)
-				}
-				keyboard := tgbotapi.NewInlineKeyboardMarkup(row)
-
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, responseText)
-				msg.ParseMode = "HTML"
-				msg.ReplyMarkup = keyboard
-				_, err = bot.Send(msg)
-				if err != nil {
-					log.Printf("Cannot send message: %v", err)
-				}
+				sendDraftsMenu(cmdCtx, s, bot, variants, my_id)
 				cancel()
 
 			}
@@ -149,8 +133,76 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 				if _, err := bot.Request(callBackAnswer); err != nil {
 					log.Printf("Cannot answer to callback: %v", err)
 				}
+				emptyKeyBoard := tgbotapi.NewInlineKeyboardMarkup()
+				editMsg := tgbotapi.NewEditMessageReplyMarkup(
+					update.CallbackQuery.Message.Chat.ID,
+					update.CallbackQuery.Message.MessageID,
+					emptyKeyBoard,
+				)
+				bot.Send(editMsg)
 				cancel()
 			}
 		}
+	}
+}
+
+func runAutoGeneration(ctx context.Context, s *store.Store, gen *generator.Generator, topic string, limit int) ([]string, error) {
+
+	finalTopic, err := gen.TopicGenerator(ctx, topic)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot get right topic: %v", err)
+	}
+	log.Printf("Придумал тему: %s", finalTopic)
+
+	vector, err := gen.GetEmbedding(ctx, finalTopic)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot get embedding: %v", err)
+	}
+	examples, err := s.FindSimilarPosts(ctx, vector, limit)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot find similar psot: %v", err)
+	}
+	log.Printf("Найдено похожих постов %d", len(examples))
+
+	variants, err := gen.GeneratePost(ctx, examples, finalTopic)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot generate post: %v", err)
+	}
+	log.Printf("получено вариантов %d", len(variants))
+
+	return variants, nil
+
+}
+
+func sendDraftsMenu(ctx context.Context, s *store.Store, bot *tgbotapi.BotAPI, variants []string, myID int64) {
+	var responseText string
+	var draftIDs []int
+	for i, variant := range variants {
+		id, err := s.SaveDraft(ctx, variant)
+		if err != nil {
+			log.Printf("Cannot use savedraft: %v", err)
+			break
+		}
+		draftIDs = append(draftIDs, id)
+		responseText += fmt.Sprintf("<b>Variant %d: </b>\n%s\n\n", i+1, variant)
+	}
+
+	var row []tgbotapi.InlineKeyboardButton
+	for index, id := range draftIDs {
+
+		callbackData := fmt.Sprintf("publish:%d", id)
+		buttonText := fmt.Sprintf("Variant: %d", index+1)
+
+		btn := tgbotapi.NewInlineKeyboardButtonData(buttonText, callbackData)
+		row = append(row, btn)
+	}
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(row)
+
+	msg := tgbotapi.NewMessage(myID, responseText)
+	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = keyboard
+	_, err := bot.Send(msg)
+	if err != nil {
+		log.Printf("Cannot send message: %v", err)
 	}
 }
