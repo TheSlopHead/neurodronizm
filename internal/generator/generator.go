@@ -71,7 +71,17 @@ func New(ctx context.Context, apiKey string) (*Generator, error) {
 
 func (g *Generator) GeneratePost(ctx context.Context, examples []string, topic string) ([]string, error) {
 	Prompt := strings.Join(examples, "\n---\n")
-	finalPrompt := fmt.Sprintf("Вот примеры моих постов:\n%s\n\nА теперь: %s", Prompt, topic)
+	finalPrompt := fmt.Sprintf(`Вот примеры моих прошлых постов для понимания стиля:
+	<переменная со склеенными примерами>
+
+	Твоя задача: напиши 3 разных варианта нового поста на тему: "<переменная темы>".
+	Пиши в моем стиле, иронично и со стебом.
+
+	КРИТИЧЕСКИ ВАЖНОЕ ПРАВИЛО ДЛЯ ФОРМАТИРОВАНИЯ:
+	Разделяй варианты постов строго строкой [POST_SPLIT].
+
+	Внутри самих текстов постов этот маркер использовать запрещено. Не пиши никаких вступлений от себя вроде "Вот твои посты:".
+	`, Prompt, topic)
 
 	rawResult, err := g.openaiClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Model: openai.ChatModel("qwen2.5:1.5b"),
@@ -120,7 +130,7 @@ func (g *Generator) GetEmbedding(ctx context.Context, text string) ([]float32, e
 
 func (g *Generator) TopicGenerator(ctx context.Context, topic string) (string, error) {
 	if topic == "" {
-		prompt := "Ты — креативный автор канала. Придумай одну интересную, актуальную и острую тему для постироничного поста про автомобили (или технологии). Верни ТОЛЬКО саму тему одной короткой фразой, без лишних слов, кавычек и приветствий"
+		prompt := "Ты — креативный автор канала. Придумай одну интересную, актуальную и острую тему для постироничного поста . Верни ТОЛЬКО саму тему одной короткой фразой, без лишних слов, кавычек и приветствий"
 		rawResult, err := g.openaiClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 			Model: openai.ChatModel("qwen2.5:1.5b"),
 			Messages: ([]openai.ChatCompletionMessageParamUnion{
