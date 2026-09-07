@@ -24,7 +24,6 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 		log.Printf("Cannot parse to int: %v", err)
 	}
 	bot, err := tgbotapi.NewBotAPI(bot_token)
-
 	if err != nil {
 		log.Printf("Cannot validate telegram bot: %v", err)
 		panic(err)
@@ -92,10 +91,6 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 
 				cmdCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
 				limit := 15
-				// examples, err := s.GetLastPost(cmdCtx, limit) - cause i have vectorizing search
-				// if err != nil {
-				// 	log.Printf("Cannot get posts from database: %v", err)
-				// }
 				topic := update.Message.CommandArguments()
 
 				variants, err := runAutoGeneration(cmdCtx, s, gen, topic, limit)
@@ -105,36 +100,6 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 					continue
 				}
 				sendDraftsMenu(cmdCtx, s, bot, variants, my_id)
-				// var responseText string
-				// var draftIDs []int
-				// for i, variant := range variants {
-				// 	id, err := s.SaveDraft(cmdCtx, variant)
-				// 	if err != nil {
-				// 		log.Printf("Cannot use savedraft: %v", err)
-				// 		break
-				// 	}
-				// 	draftIDs = append(draftIDs, id)
-				// 	responseText += fmt.Sprintf("<b>Variant %d: </b>\n%s\n\n", i+1, variant)
-				// }
-
-				// var row []tgbotapi.InlineKeyboardButton
-				// for index, id := range draftIDs {
-
-				// 	callbackData := fmt.Sprintf("publish:%d", id)
-				// 	buttonText := fmt.Sprintf("Variant: %d", index+1)
-
-				// 	btn := tgbotapi.NewInlineKeyboardButtonData(buttonText, callbackData)
-				// 	row = append(row, btn)
-				// }
-				// keyboard := tgbotapi.NewInlineKeyboardMarkup(row)
-
-				// msg := tgbotapi.NewMessage(update.Message.Chat.ID, responseText)
-				// msg.ParseMode = "HTML"
-				// msg.ReplyMarkup = keyboard
-				// _, err = bot.Send(msg)
-				// if err != nil {
-				// 	log.Printf("Cannot send message: %v", err)
-				// }
 				cancel()
 
 			}
