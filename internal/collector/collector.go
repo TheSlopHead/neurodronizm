@@ -50,7 +50,15 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 				return
 			case <-ticker.C:
 				log.Println("Run automatic draft generation on a schedule...")
-				runAutoGeneration(ctx, s, gen, "", autoGenerationLimit)
+				cmdCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
+				variants, err := runAutoGeneration(ctx, s, gen, "", autoGenerationLimit)
+				if err != nil || len(variants) == 0 {
+					log.Printf("Autogeneration error: %v", err)
+					cancel()
+					continue
+				}
+				sendDraftsMenu(cmdCtx, s, bot, variants, my_id)
+				cancel()
 			}
 		}
 	}()
@@ -96,36 +104,37 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 					cancel()
 					continue
 				}
-				var responseText string
-				var draftIDs []int
-				for i, variant := range variants {
-					id, err := s.SaveDraft(cmdCtx, variant)
-					if err != nil {
-						log.Printf("Cannot use savedraft: %v", err)
-						break
-					}
-					draftIDs = append(draftIDs, id)
-					responseText += fmt.Sprintf("<b>Variant %d: </b>\n%s\n\n", i+1, variant)
-				}
+				sendDraftsMenu(cmdCtx, s, bot, variants, my_id)
+				// var responseText string
+				// var draftIDs []int
+				// for i, variant := range variants {
+				// 	id, err := s.SaveDraft(cmdCtx, variant)
+				// 	if err != nil {
+				// 		log.Printf("Cannot use savedraft: %v", err)
+				// 		break
+				// 	}
+				// 	draftIDs = append(draftIDs, id)
+				// 	responseText += fmt.Sprintf("<b>Variant %d: </b>\n%s\n\n", i+1, variant)
+				// }
 
-				var row []tgbotapi.InlineKeyboardButton
-				for index, id := range draftIDs {
+				// var row []tgbotapi.InlineKeyboardButton
+				// for index, id := range draftIDs {
 
-					callbackData := fmt.Sprintf("publish:%d", id)
-					buttonText := fmt.Sprintf("Variant: %d", index+1)
+				// 	callbackData := fmt.Sprintf("publish:%d", id)
+				// 	buttonText := fmt.Sprintf("Variant: %d", index+1)
 
-					btn := tgbotapi.NewInlineKeyboardButtonData(buttonText, callbackData)
-					row = append(row, btn)
-				}
-				keyboard := tgbotapi.NewInlineKeyboardMarkup(row)
+				// 	btn := tgbotapi.NewInlineKeyboardButtonData(buttonText, callbackData)
+				// 	row = append(row, btn)
+				// }
+				// keyboard := tgbotapi.NewInlineKeyboardMarkup(row)
 
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, responseText)
-				msg.ParseMode = "HTML"
-				msg.ReplyMarkup = keyboard
-				_, err = bot.Send(msg)
-				if err != nil {
-					log.Printf("Cannot send message: %v", err)
-				}
+				// msg := tgbotapi.NewMessage(update.Message.Chat.ID, responseText)
+				// msg.ParseMode = "HTML"
+				// msg.ReplyMarkup = keyboard
+				// _, err = bot.Send(msg)
+				// if err != nil {
+				// 	log.Printf("Cannot send message: %v", err)
+				// }
 				cancel()
 
 			}
@@ -159,6 +168,13 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 				if _, err := bot.Request(callBackAnswer); err != nil {
 					log.Printf("Cannot answer to callback: %v", err)
 				}
+				emptyKeyBoard := tgbotapi.NewInlineKeyboardMarkup()
+				editMsg := tgbotapi.NewEditMessageReplyMarkup(
+					update.CallbackQuery.Message.Chat.ID,
+					update.CallbackQuery.Message.MessageID,
+					emptyKeyBoard,
+				)
+				bot.Send(editMsg)
 				cancel()
 			}
 		}
@@ -191,4 +207,37 @@ func runAutoGeneration(ctx context.Context, s *store.Store, gen *generator.Gener
 
 	return variants, nil
 
+}
+
+func sendDraftsMenu(ctx context.Context, s *store.Store, bot *tgbotapi.BotAPI, variants []string, myID int64) {
+	var responseText string
+	var draftIDs []int
+	for i, variant := range variants {
+		id, err := s.SaveDraft(ctx, variant)
+		if err != nil {
+			log.Printf("Cannot use savedraft: %v", err)
+			break
+		}
+		draftIDs = append(draftIDs, id)
+		responseText += fmt.Sprintf("<b>Variant %d: </b>\n%s\n\n", i+1, variant)
+	}
+
+	var row []tgbotapi.InlineKeyboardButton
+	for index, id := range draftIDs {
+
+		callbackData := fmt.Sprintf("publish:%d", id)
+		buttonText := fmt.Sprintf("Variant: %d", index+1)
+
+		btn := tgbotapi.NewInlineKeyboardButtonData(buttonText, callbackData)
+		row = append(row, btn)
+	}
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(row)
+
+	msg := tgbotapi.NewMessage(myID, responseText)
+	msg.ParseMode = "HTML"
+	msg.ReplyMarkup = keyboard
+	_, err := bot.Send(msg)
+	if err != nil {
+		log.Printf("Cannot send message: %v", err)
+	}
 }
