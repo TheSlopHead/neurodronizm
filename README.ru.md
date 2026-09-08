@@ -17,18 +17,18 @@ MVP работает целиком: новые посты собираются 
 
 - [x] Real-time сбор новых постов канала в Postgres (обработка `channel_post` от Telegram Bot API)
 - [x] Бэкфилл истории канала из экспорта Telegram Desktop
-- [x] Генерация черновиков в стиле канала (базовый few-shot) — пока на небольшом захардкоженном наборе примеров, точность стиля дорабатывается
+- [x] Генерация черновиков с few-shot примерами через векторный поиск (pgvector)
 - [x] Модерация и публикация через inline-кнопки в личных сообщениях
-- [ ] Векторный поиск релевантных постов для few-shot (pgvector) — следующий шаг, чтобы уйти от захардкоженных примеров
 - [ ] Автоматический запуск генерации по расписанию (cron) — пока намеренно запускается вручную, пока пайплайн ещё дорабатывается
+- [ ] Обернуть сами Go-сервисы в Docker (сейчас в Docker только Postgres) — пока отложено
 
 ## Стек
 
 - Go
 - PostgreSQL
 - Telegram Bot API (`go-telegram-bot-api`)
-- Google Gemini API — генерация черновиков
-- pgvector — планируется
+- Google Gemini API — генерация черновиков и эмбеддинги
+- pgvector — поиск похожих постов
 
 ## Как поднять локально
 
@@ -41,13 +41,26 @@ MVP работает целиком: новые посты собираются 
 
 3. Применить схему (один раз, вручную через `psql`):
    ```sql
-   CREATE TABLE posts (
-       id            BIGSERIAL PRIMARY KEY,
-       tg_message_id BIGINT UNIQUE NOT NULL,
-       text          TEXT NOT NULL,
-       posted_at     TIMESTAMPTZ NOT NULL,
-       is_generated  BOOLEAN NOT NULL DEFAULT false,
-       created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+   -- 1. Главная таблица истории постов из Telegram
+   CREATE TABLE IF NOT EXISTS posts (
+       tg_message_id BIGINT PRIMARY KEY,
+       text TEXT NOT NULL,
+       posted_at TIMESTAMP WITH TIME ZONE NOT NULL
+   );
+
+   -- 2. Таблица для черновиков (очередь модерации)
+   CREATE TABLE IF NOT EXISTS drafts (
+       id SERIAL PRIMARY KEY,
+       text TEXT NOT NULL,
+       status VARCHAR(20) DEFAULT 'draft',
+       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+   );
+
+   -- 3. Активация pgvector и таблица векторов
+   CREATE EXTENSION IF NOT EXISTS vector;
+   CREATE TABLE IF NOT EXISTS post_embeddings (
+       post_id BIGINT PRIMARY KEY REFERENCES posts(tg_message_id) ON DELETE CASCADE,
+       embedding vector(768) NOT NULL
    );
    ```
 
@@ -57,9 +70,16 @@ MVP работает целиком: новые посты собираются 
    export DATABASE_URL=postgres://dronism:change_me@localhost:5432/dronism?sslmode=disable
    ```
 
-5. Запустить сборщик постов:
+5. Запустить бота (real-time сбор + модерация):
    ```bash
-   go run ./cmd/collector
+   go run .
+   ```
+
+6. Разовые команды, по необходимости:
+   ```bash
+   go run ./cmd/backfill    # импорт истории из экспорта Telegram Desktop
+   go run ./cmd/embedder    # эмбеддинг постов, у которых ещё нет вектора
+   go run ./cmd/generator   # ручной запуск генерации черновика, для тестов
    ```
 
 ## Структура репозитория
@@ -67,18 +87,18 @@ MVP работает целиком: новые посты собираются 
 ```
 neurodronism/
 ├── cmd/
-│   ├── collector/     # точка входа: сбор постов из Telegram в реальном времени
-│   ├── generator/     # точка входа: ручной запуск генерации, для тестов
-│   └── data/          # экспорт истории канала (result.json)
+│   ├── backfill/      # точка входа: разовый импорт истории
+│   ├── embedder/      # точка входа: эмбеддинг постов без вектора
+│   └── generator/     # точка входа: ручной запуск генерации, для тестов
+├── data/              # экспорт истории канала (result.json)
 ├── internal/
-│   ├── backfill/      # логика импорта истории
+│   ├── collector/     # логика сбора постов в реальном времени
 │   ├── generator/     # логика few-shot генерации черновиков
 │   └── store/         # работа с Postgres
+├── main.go            # точка входа: сам работающий бот (сбор + модерация)
 ├── docker-compose.yml
 ├── architecture.md
 └── README.md
 ```
 
-> На доработку: часть точек входа и внутренней логики пока не до конца разнесена (например, в `cmd/collector` сейчас лежит логика, которой место в `internal/collector`, а в `internal/backfill` — точка входа, которой место в `cmd/backfill`). Пока оставлено как есть, поправится по мере стабилизации проекта.
-
-По мере добавления векторного поиска и планировщика структура и этот README будут обновляться.
+По мере добавления планировщика и упаковки сервисов в Docker структура и этот README будут обновляться.

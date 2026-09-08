@@ -16,18 +16,18 @@ MVP is working end-to-end: new posts are collected in real time, the model gener
 
 - [x] Real-time ingestion of new channel posts into Postgres (handling `channel_post` updates from the Telegram Bot API)
 - [x] Backfill of channel history from a Telegram Desktop export
-- [x] Draft generation in the channel's style (basic few-shot) — currently limited to a handful of hardcoded examples, style accuracy is being improved
+- [x] Draft generation using few-shot examples retrieved via vector search (pgvector)
 - [x] Moderation and publishing via inline buttons in private messages
-- [ ] Vector search for relevant few-shot examples (pgvector) — next up, to scale beyond a handful of hardcoded posts
 - [ ] Scheduled automatic generation (cron) — currently triggered manually on purpose, while the pipeline is still being tuned
+- [ ] Dockerize the Go services themselves (only Postgres runs in Docker so far) — deferred for now
 
 ## Stack
 
 - Go
 - PostgreSQL
 - Telegram Bot API (`go-telegram-bot-api`)
-- Google Gemini API — draft generation
-- pgvector — planned
+- Google Gemini API — draft generation and embeddings
+- pgvector — similarity search over past posts
 
 ## Running locally
 
@@ -40,13 +40,26 @@ MVP is working end-to-end: new posts are collected in real time, the model gener
 
 3. Apply the schema (one-time, via `psql`):
    ```sql
-   CREATE TABLE posts (
-       id            BIGSERIAL PRIMARY KEY,
-       tg_message_id BIGINT UNIQUE NOT NULL,
-       text          TEXT NOT NULL,
-       posted_at     TIMESTAMPTZ NOT NULL,
-       is_generated  BOOLEAN NOT NULL DEFAULT false,
-       created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+   -- 1. Main table with Telegram post history
+   CREATE TABLE IF NOT EXISTS posts (
+       tg_message_id BIGINT PRIMARY KEY,
+       text TEXT NOT NULL,
+       posted_at TIMESTAMP WITH TIME ZONE NOT NULL
+   );
+
+   -- 2. Draft table (the moderation queue)
+   CREATE TABLE IF NOT EXISTS drafts (
+       id SERIAL PRIMARY KEY,
+       text TEXT NOT NULL,
+       status VARCHAR(20) DEFAULT 'draft',
+       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+   );
+
+   -- 3. pgvector extension and embeddings table
+   CREATE EXTENSION IF NOT EXISTS vector;
+   CREATE TABLE IF NOT EXISTS post_embeddings (
+       post_id BIGINT PRIMARY KEY REFERENCES posts(tg_message_id) ON DELETE CASCADE,
+       embedding vector(768) NOT NULL
    );
    ```
 
@@ -56,9 +69,16 @@ MVP is working end-to-end: new posts are collected in real time, the model gener
    export DATABASE_URL=postgres://dronism:change_me@localhost:5432/dronism?sslmode=disable
    ```
 
-5. Run the collector:
+5. Run the bot (real-time collection + moderation):
    ```bash
-   go run ./cmd/collector
+   go run .
+   ```
+
+6. One-off commands, run as needed:
+   ```bash
+   go run ./cmd/backfill    # import historical posts from a Telegram Desktop export
+   go run ./cmd/embedder    # embed any posts that don't have a vector yet
+   go run ./cmd/generator   # manually trigger a draft generation, for testing
    ```
 
 ## Repository structure
@@ -66,18 +86,18 @@ MVP is working end-to-end: new posts are collected in real time, the model gener
 ```
 neurodronism/
 ├── cmd/
-│   ├── collector/     # entry point: real-time post collection from Telegram
-│   ├── generator/     # entry point: manual generation trigger, for testing
-│   └── data/          # exported channel history (result.json)
+│   ├── backfill/      # entry point: one-time historical import
+│   ├── embedder/      # entry point: embeds posts that don't have a vector yet
+│   └── generator/     # entry point: manual generation trigger, for testing
+├── data/              # exported channel history (result.json)
 ├── internal/
-│   ├── backfill/      # historical import logic
+│   ├── collector/     # real-time post collection logic
 │   ├── generator/     # few-shot draft generation logic
 │   └── store/         # Postgres access layer
+├── main.go            # entry point: the running bot (real-time collection + moderation)
 ├── docker-compose.yml
 ├── architecture.md
 └── README.md
 ```
 
-> Known cleanup item: some entry points and internal logic aren't cleanly split yet (e.g. `cmd/collector` currently holds logic that belongs in `internal/collector`, and `internal/backfill` currently holds an entry point that belongs in `cmd/backfill`). Left as-is for now, will be straightened out as the project stabilizes.
-
-Structure and this README will be updated as the vector search and scheduler get added.
+Structure and this README will be updated as the scheduler gets added and the services get containerized.
