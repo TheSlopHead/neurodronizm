@@ -41,7 +41,7 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 
 	autoGenerationLimit := 15
 	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
+		ticker := time.NewTicker(4 * time.Hour)
 		defer ticker.Stop()
 		for {
 			select {
@@ -50,7 +50,7 @@ func Collector(ctx context.Context, s *store.Store, gen *generator.Generator) {
 			case <-ticker.C:
 				log.Println("Run automatic draft generation on a schedule...")
 				cmdCtx, cancel := context.WithTimeout(ctx, 50*time.Second)
-				variants, err := runAutoGeneration(ctx, s, gen, "", autoGenerationLimit)
+				variants, err := runAutoGeneration(cmdCtx, s, gen, "", autoGenerationLimit)
 				if err != nil || len(variants) == 0 {
 					log.Printf("Autogeneration error: %v", err)
 					cancel()
